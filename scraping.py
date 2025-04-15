@@ -1,5 +1,10 @@
 import requests
 import time
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Observer's location: Bangalore
 LAT, LON, ALT = 12.97623, 77.60329, 0
@@ -8,7 +13,7 @@ LAT, LON, ALT = 12.97623, 77.60329, 0
 SAT_IDS = [25544, 20580]
 
 # Your N2YO API key
-API_KEY = "your-api-key"
+API_KEY = os.getenv("N2YO_API_KEY")
 
 def fetch_satellite_data(sat_id):
     url = f"https://api.n2yo.com/rest/v1/satellite/positions/{sat_id}/{LAT}/{LON}/{ALT}/1&apiKey={API_KEY}"

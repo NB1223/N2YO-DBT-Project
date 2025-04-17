@@ -2,6 +2,9 @@ from kafka import KafkaConsumer
 import json
 import re
 
+#file not being used
+
+
 # Kafka configuration
 KAFKA_BROKER = 'localhost:9092'
 TOPIC_PATTERN = re.compile(r'^satellite-\d+$')  # Match topics like satellite-49810

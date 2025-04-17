@@ -5,6 +5,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from kafka import KafkaProducer
+from tabulate import tabulate
 
 # Load API key from .env
 load_dotenv()
@@ -24,6 +25,9 @@ producer = KafkaProducer(
     bootstrap_servers=KAFKA_BROKER,
     value_serializer=lambda v: json.dumps(v).encode('utf-8')
 )
+
+# Storage for tabular data display
+table_data = []
 
 # Fetch satellite data and send to individual Kafka topics
 def fetch_satellite_data(sat_id):
@@ -46,7 +50,16 @@ def fetch_satellite_data(sat_id):
 
         topic = f"satellite-{sat_id}"
         producer.send(topic, value=payload)
-        print(f"Sent to Kafka topic '{topic}': {payload}")
+
+        # Store for display
+        table_data.append([
+            payload["satname"], payload["sat_id"],
+            round(payload["latitude"], 4),
+            round(payload["longitude"], 4),
+            round(payload["azimuth"], 2),
+            round(payload["elevation"], 2),
+            payload["timestamp"]
+        ])
 
     except requests.RequestException as e:
         print(f"Failed to fetch/send data for satellite {sat_id}: {e}")
@@ -55,10 +68,19 @@ print("Starting satellite data producer...\n")
 
 try:
     while True:
-        print(f"Fetching data at {time.strftime('%H:%M:%S')}:\n" + "-" * 60)
+        table_data.clear()
+        print(f"\nFetching data at {time.strftime('%H:%M:%S')}:\n" + "-" * 80)
+        
         with ThreadPoolExecutor(max_workers=len(SAT_IDS)) as executor:
             executor.map(fetch_satellite_data, SAT_IDS)
-        print("-" * 60 + "\n")
+
+        print(tabulate(
+            table_data,
+            headers=["Satellite", "ID", "Latitude", "Longitude", "Azimuth", "Elevation", "Timestamp"],
+            tablefmt="fancy_grid"
+        ))
+
+        print("-" * 80)
         time.sleep(18)
 
 except KeyboardInterrupt:

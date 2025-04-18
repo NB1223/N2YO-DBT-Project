@@ -36,8 +36,8 @@ satellite_schema = StructType() \
 
 # Schema for observer requests
 observer_schema = StructType() \
-    .add("latitude", DoubleType()) \
-    .add("longitude", DoubleType()) \
+    .add("obs_latitude", DoubleType()) \
+    .add("obs_longitude", DoubleType()) \
     .add("altitude", DoubleType()) \
     .add("timestamp", LongType()) \
     .add("choice_id", LongType())
@@ -101,7 +101,7 @@ def process_observer_requests(df, epoch_id):
             min_dist = float('inf')
             closest_sat = None
             for sat in latest_satellite_data.values():
-                dist = haversine(req.latitude, req.longitude, sat['latitude'], sat['longitude'])
+                dist = haversine(req.obs_latitude, req.obs_longitude, sat['latitude'], sat['longitude'])
                 if dist < min_dist:
                     min_dist = dist
                     closest_sat = sat

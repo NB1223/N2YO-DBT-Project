@@ -1,6 +1,7 @@
 import time
 import json
 from kafka import KafkaProducer, KafkaConsumer
+from tabulate import tabulate
 
 # Kafka config
 KAFKA_BROKER = 'localhost:9092'
@@ -10,7 +11,7 @@ RESPONSE_TOPIC = 'observer_response'
 # Kafka Producer
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BROKER,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
 )
 
 # Kafka Consumer
@@ -18,9 +19,9 @@ consumer = KafkaConsumer(
     RESPONSE_TOPIC,
     bootstrap_servers=KAFKA_BROKER,
     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-    group_id="observer_waiter",
+    # group_id="observer_waiter",
     auto_offset_reset="latest",
-    enable_auto_commit=True
+    enable_auto_commit=False
 )
 
 # Shared observer state
@@ -36,8 +37,8 @@ def get_location():
     while True:
         try:
             print("\nEnter Observer Location:")
-            observer_data["latitude"] = float(input("Latitude: "))
-            observer_data["longitude"] = float(input("Longitude: "))
+            observer_data["obs_latitude"] = float(input("Latitude: "))
+            observer_data["obs_longitude"] = float(input("Longitude: "))
             observer_data["altitude"] = float(input("Altitude (m): "))
             break
         except ValueError:
@@ -63,25 +64,39 @@ def get_menu_choice():
         else:
             print("Invalid choice. Try again.")
 
-def send_to_kafka_and_wait():
+def send_to_kafka_and_wait(c):
     observer_data["timestamp"] = int(time.time())
     print(f"\nSending to Kafka: {observer_data}")
     producer.send(OBSERVER_TOPIC, value=observer_data)
 
     print("Waiting for response...")
-    for msg in consumer:
-        response = msg.value
-        print("\nResponse received:")
-        for key, value in response.items():
-            print(f"{key}: {value}")
-        break
+    if c == 2:
+        for msg in consumer:
+            response = msg.value
+            print("\nResponse received:")
+
+            if isinstance(response, list):
+                print(tabulate(response, headers="keys", tablefmt="grid"))
+            else:
+                print(tabulate([response], headers="keys", tablefmt="grid"))
+            break
+    else:
+        for msg in consumer:
+            response = msg.value
+            print("\nResponse received:")
+            for key, value in response.items():
+                print(f"{key}: {value}")
+            break
 
 def main_loop():
     while True:
         get_menu_choice()
-        if observer_data["choice_id"] == 3:
+        if observer_data["choice_id"] == 2:
             get_location()
-            send_to_kafka_and_wait()
+            send_to_kafka_and_wait(2)
+        elif observer_data["choice_id"] == 3:
+            get_location()
+            send_to_kafka_and_wait(3)
         else:
             print(f"Option {observer_data['choice_id']} selected - functionality not implemented.")
 

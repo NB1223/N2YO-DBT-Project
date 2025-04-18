@@ -80,8 +80,8 @@ df_with_choice = df_obs.withColumn(
     "action",
     when(col("choice_id") == 1, lit("motion_vector"))
     .when(col("choice_id") == 2, lit("overlap"))
-    .when(col("choice_id") == 3, lit("coverage"))
-    .when(col("choice_id") == 4, lit("closest"))
+    .when(col("choice_id") == 3, lit("closest"))
+    .when(col("choice_id") == 4, lit("exit"))
     .otherwise(lit("unknown"))
 )
 
@@ -95,14 +95,17 @@ def process_satellite_data(batch_df, batch_id):
 
 # Handle the observer choice and calculate coverage overlap
 def process_observer_data(df, df_choice):
-    df_overlap = df.filter(col("action") == "overlap")
+    if df.filter(col("action") == "overlap").isEmpty() != 1:
+        print("hi nishta")
 
-    if df_overlap.isEmpty() != 1:
+
+    elif df.filter(col("action") == "overlap").isEmpty() != 1:
         cached_satellites = get_cached_satellites()
 
         if len(cached_satellites) == 5:
             df_cached_sat = spark.createDataFrame(cached_satellites)
 
+            # called from folder
             overlap_result = calculate_overlap(df_cached_sat)
 
             print("\n=== Coverage Overlap Result ===")
@@ -144,8 +147,11 @@ def process_observer_data(df, df_choice):
         else:
             print("\n[WARN] Not enough satellites in cache to compute overlap.")
 
+    elif df.filter(col("action") == "closest").isEmpty() != 1:
+        print("hi nikitha")
+
     else:
-        print("other options")
+        print("exit to be implemented")
 
 
 # Process the streams

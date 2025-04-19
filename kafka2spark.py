@@ -5,6 +5,7 @@ from Calculations.coverage_overlap import calculate_overlap
 from pyspark.sql import Row
 from kafka import KafkaProducer
 import json
+import math
 
 # Set up Kafka Producer for response
 response_producer = KafkaProducer(
@@ -85,6 +86,15 @@ df_with_choice = df_obs.withColumn(
     .otherwise(lit("unknown"))
 )
 
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371.0  # Earth radius in kilometers
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2.0)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
 # Process the satellite data and update cache
 def process_satellite_data(batch_df, batch_id):
     batch_df.collect()  # Collect the satellite data into a batch (or any storage mechanism you prefer)
@@ -95,12 +105,11 @@ def process_satellite_data(batch_df, batch_id):
 
 # Handle the observer choice and calculate coverage overlap
 def process_observer_data(df, df_choice):
-    if df.filter(col("action") == "overlap").isEmpty() != 1:
-        print("hi nishta")
-
+    if df.filter(col("action") == "motion_vector").isEmpty() != 1:
+        pass
 
     elif df.filter(col("action") == "overlap").isEmpty() != 1:
-        cached_satellites = get_cached_satellites()
+        cached_satellites = cached_satellites.collect()
 
         if len(cached_satellites) == 5:
             df_cached_sat = spark.createDataFrame(cached_satellites)
@@ -148,10 +157,51 @@ def process_observer_data(df, df_choice):
             print("\n[WARN] Not enough satellites in cache to compute overlap.")
 
     elif df.filter(col("action") == "closest").isEmpty() != 1:
-        print("hi nikitha")
+        # Get the latest observer data
+        observer_rows = df.collect()
+        
+        for observer_row in observer_rows:
+            action = observer_row["action"]
+            
+            if action == "closest":
+                # Get observer's location
+                obs_lat = observer_row["obs_latitude"]
+                obs_lon = observer_row["obs_longitude"]
+                
+                # Find closest satellite
+                min_dist = float('inf')
+                closest_sat = None
+                
+                # Convert satellite cache to list of rows
+                cached_satellites = [Row(**sat_data) for sat_data in satellite_cache.values()]
+                
+                if not cached_satellites:
+                    print("\n[WARN] No satellites in cache to find closest.")
+                    continue
+                    
+                for sat in cached_satellites:
+                    dist = haversine(obs_lat, obs_lon, sat["latitude"], sat["longitude"])
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_sat = sat
+                
+                if closest_sat:
+                    response = {
+                        "satname": closest_sat['satname'],
+                        "sat_id": closest_sat['sat_id'],
+                        "latitude": closest_sat['latitude'],
+                        "longitude": closest_sat['longitude'],
+                        "distance_km": round(min_dist, 2),
+                        "observer_lat": obs_lat,
+                        "observer_lon": obs_lon,
+                        "timestamp": observer_row["timestamp"]
+                    }
+                    print(f"\nClosest satellite found: {response}")
+                    response_producer.send("observer_response", value=response)
 
     else:
         print("exit to be implemented")
+
 
 
 # Process the streams

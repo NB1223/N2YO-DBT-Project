@@ -80,9 +80,16 @@ def send_to_kafka_and_wait(c):
             else:
                 print(tabulate([response], headers="keys", tablefmt="grid"))
             break
+    elif c == 3:
+        for msg in consumer:
+            response = msg.value
+            print("\n📬 Response received as Table:\n")
+            print(tabulate(response.items(), headers=["Key", "Value"], tablefmt="grid"))
+            break
     else:
         for msg in consumer:
             response = msg.value
+            print(response)
             print("\nResponse received:")
             for key, value in response.items():
                 print(f"{key}: {value}")
@@ -92,8 +99,9 @@ def main_loop():
     while True:
         get_menu_choice()
         if observer_data["choice_id"] == 2:
-            get_location()
             send_to_kafka_and_wait(2)
+        # elif observer_data["choice_id"] == 1:
+        #     send_to_kafka_and_wait(1)
         elif observer_data["choice_id"] == 3:
             get_location()
             send_to_kafka_and_wait(3)

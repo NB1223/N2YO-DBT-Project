@@ -109,7 +109,7 @@ def process_observer_data(df, df_choice):
         pass
 
     elif df.filter(col("action") == "overlap").isEmpty() != 1:
-        cached_satellites = cached_satellites.collect()
+        cached_satellites = get_cached_satellites()
 
         if len(cached_satellites) == 5:
             df_cached_sat = spark.createDataFrame(cached_satellites)

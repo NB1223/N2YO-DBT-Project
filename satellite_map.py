@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
+from pyspark.sql.functions import from_json, col, window, current_timestamp
 from pyspark.sql.types import StructType, DoubleType, StringType, LongType
 import folium
 from folium.features import PolyLine
@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Create Spark Session
 spark = SparkSession.builder \
-    .appName("SatelliteKafkaConsumerMap") \
+    .appName("SatelliteKafkaConsumerMapWithWindows") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3") \
     .getOrCreate()
 
@@ -32,18 +32,40 @@ df_raw = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Parse JSON value
+# Parse JSON value and add processing timestamp
 df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_string", "topic") \
     .select(
         col("topic"),
         from_json(col("json_string"), schema).alias("data")
-    ).select("topic", "data.*")
+    ).select("topic", "data.*") \
+    .withColumn("processing_time", current_timestamp())
 
-# Store satellite positions for path tracking
-satellite_positions = {sat_id: [] for sat_id in ["49810", "43566", "43056", "41550", "41174"]}
+# Apply sliding window: 30-minute window sliding every 2 minutes
+windowed_df = df_parsed \
+    .withWatermark("processing_time", "10 minutes") \
+    .groupBy(
+        window("processing_time", "30 minutes", "2 minutes"),
+        col("sat_id"),
+        col("satname")
+    ) \
+    .agg(
+        {"latitude": "last", "longitude": "last", "timestamp": "max"}
+    ) \
+    .select(
+        col("window.start").alias("window_start"),
+        col("window.end").alias("window_end"),
+        col("sat_id"),
+        col("satname"),
+        col("last(latitude)").alias("latitude"),
+        col("last(longitude)").alias("longitude"),
+        col("max(timestamp)").alias("timestamp")
+    )
 
-# Function to visualize all satellites on one map with lines
-def visualize_combined_map(batch_df, epoch_id):
+# Storage for windowed data
+windowed_positions = {sat_id: [] for sat_id in ["49810", "43566", "43056", "41550", "41174"]}
+
+# Function to visualize with sliding windows
+def visualize_windowed_map(batch_df, epoch_id):
     if batch_df.isEmpty():
         return
 
@@ -52,13 +74,20 @@ def visualize_combined_map(batch_df, epoch_id):
     # Update positions for each satellite
     for _, row in pandas_df.iterrows():
         sat_id = str(row['sat_id'])
-        if sat_id in satellite_positions:
-            satellite_positions[sat_id].append((row['latitude'], row['longitude']))
-            # Keep only last 50 positions to avoid clutter
-            if len(satellite_positions[sat_id]) > 50:
-                satellite_positions[sat_id] = satellite_positions[sat_id][-50:]
+        if sat_id in windowed_positions:
+            windowed_positions[sat_id].append({
+                "position": (row['latitude'], row['longitude']),
+                "window_start": row['window_start'],
+                "window_end": row['window_end']
+            })
+            # Keep only positions from the last 30-minute window
+            current_time = datetime.now()
+            windowed_positions[sat_id] = [
+                pos for pos in windowed_positions[sat_id] 
+                if (current_time - pos['window_end']).total_seconds() <= 1800  # 30 minutes
+            ]
 
-    # Create a folium map centered at the equator and prime meridian
+    # Create map
     fmap = folium.Map(
         location=[0, 0],
         zoom_start=2,
@@ -66,7 +95,7 @@ def visualize_combined_map(batch_df, epoch_id):
         attr='Esri World Imagery'
     )
 
-    # Color palette for different satellites
+    # Color palette
     colors = ['red', 'blue', 'green', 'purple', 'orange']
     color_map = {
         "49810": colors[0],
@@ -76,30 +105,30 @@ def visualize_combined_map(batch_df, epoch_id):
         "41174": colors[4]
     }
 
-    # Add each satellite's path (as a line) and current position
-    for sat_id, positions in satellite_positions.items():
+    # Add paths and markers
+    for sat_id, positions in windowed_positions.items():
         if len(positions) >= 2:
-            # Get satellite name from the current batch
-            sat_name = pandas_df[pandas_df['sat_id'] == int(sat_id)]['satname'].iloc[0] if not pandas_df[pandas_df['sat_id'] == int(sat_id)].empty else f"Satellite {sat_id}"
+            # Extract just the coordinates for the path
+            coords = [pos['position'] for pos in positions]
             
-            # Add line for the path
+            # Add path line
             PolyLine(
-                locations=positions,
+                locations=coords,
                 color=color_map.get(sat_id, 'gray'),
                 weight=2,
                 opacity=0.8,
-                popup=f"{sat_name} Path"
+                popup=f"{positions[0]['satname'] if 'satname' in positions[0] else 'Satellite'} Path"
             ).add_to(fmap)
             
             # Add current position marker
-            if positions:
-                folium.Marker(
-                    location=positions[-1],
-                    popup=f"{sat_name} (ID: {sat_id})",
-                    icon=folium.Icon(color=color_map.get(sat_id, 'gray'), icon='satellite', prefix='fa')
-                ).add_to(fmap)
+            folium.Marker(
+                location=coords[-1],
+                popup=f"{positions[-1].get('satname', 'Satellite')} (ID: {sat_id})<br>"
+                      f"Window: {positions[-1]['window_start']} to {positions[-1]['window_end']}",
+                icon=folium.Icon(color=color_map.get(sat_id, 'gray'), icon='satellite', prefix='fa')
+            ).add_to(fmap)
 
-    # Add observer location (Bangalore)
+    # Add observer location
     folium.Marker(
         location=[12.97623, 77.60329],
         popup="Observer: Bangalore",
@@ -116,32 +145,34 @@ def visualize_combined_map(batch_df, epoch_id):
     <b>Satellite Legend</b><br>
     '''
     for sat_id, color in color_map.items():
-        sat_name = pandas_df[pandas_df['sat_id'] == int(sat_id)]['satname'].iloc[0] if not pandas_df[pandas_df['sat_id'] == int(sat_id)].empty else f"Sat {sat_id}"
+        sat_name = next((p.get('satname', f"Sat {sat_id}") for p in windowed_positions[sat_id]), f"Sat {sat_id}")
         legend_html += f'<i class="fa fa-circle" style="color:{color}"></i> {sat_name}<br>'
     legend_html += '<i class="fa fa-circle" style="color:black"></i> Observer</div>'
     
     fmap.get_root().html.add_child(folium.Element(legend_html))
 
-    # Add title with timestamp
-    title_html = f'''
-    <h3 align="center" style="font-size:16px">
-    <b>Live Satellite Tracking - {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</b>
-    </h3>
-    '''
-    fmap.get_root().html.add_child(folium.Element(title_html))
+    # Add title with time range
+    if windowed_positions:
+        latest_window = max(pos['window_end'] for positions in windowed_positions.values() for pos in positions)
+        oldest_window = min(pos['window_start'] for positions in windowed_positions.values() for pos in positions)
+        title_html = f'''
+        <h3 align="center" style="font-size:16px">
+        <b>Satellite Tracking - {oldest_window.strftime("%H:%M")} to {latest_window.strftime("%H:%M")}</b>
+        </h3>
+        '''
+        fmap.get_root().html.add_child(folium.Element(title_html))
 
-    # Save map to HTML
+    # Save map
     os.makedirs("maps", exist_ok=True)
-    map_path = "maps/combined_satellite_tracking.html"
+    map_path = "maps/windowed_satellite_tracking.html"
     fmap.save(map_path)
     
-    # Print update message
-    print(f"🌍 Combined map updated with data from epoch {epoch_id}")
+    print(f"🌍 Map updated with 30-minute sliding window data (epoch {epoch_id})")
 
-# Stream with foreachBatch to visualize
-query = df_parsed.writeStream \
-    .foreachBatch(visualize_combined_map) \
-    .outputMode("append") \
+# Start the streaming query
+query = windowed_df.writeStream \
+    .foreachBatch(visualize_windowed_map) \
+    .outputMode("complete") \
     .start()
 
 query.awaitTermination()

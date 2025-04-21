@@ -6,7 +6,7 @@ from tabulate import tabulate
 # Kafka config
 KAFKA_BROKER = 'localhost:9092'
 OBSERVER_TOPIC = 'observer_location'
-RESPONSE_TOPIC = 'observer_response'
+RESPONSE_TOPIC = 'motion_vector_response'
 
 # Kafka Producer
 producer = KafkaProducer(
@@ -100,8 +100,8 @@ def main_loop():
         get_menu_choice()
         if observer_data["choice_id"] == 2:
             send_to_kafka_and_wait(2)
-        # elif observer_data["choice_id"] == 1:
-        #     send_to_kafka_and_wait(1)
+        elif observer_data["choice_id"] == 1:
+            send_to_kafka_and_wait(1)
         elif observer_data["choice_id"] == 3:
             get_location()
             send_to_kafka_and_wait(3)
@@ -111,3 +111,4 @@ def main_loop():
 if __name__ == "__main__":
     print("Observer Kafka Producer Started")
     main_loop()
+

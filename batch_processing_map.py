@@ -168,8 +168,8 @@ def main():
             fetch_and_store()  # This function still stores the data into the DB.
             
             current_time = time.time()
-            # Update the map every 2 minutes (120 seconds)
-            if current_time - last_update_time >= 120:
+            # Update the map every 10 minutes (600 seconds)
+            if current_time - last_update_time >= 600:
                 # Fetch data from the database and generate updated HTML map
                 data = fetch_data_from_mysql()  # Fetch stored data
                 generate_html_with_map(data)  # Create the HTML page with map

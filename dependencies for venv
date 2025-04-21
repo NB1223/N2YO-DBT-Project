@@ -1,5 +1,8 @@
 PIP COMMANDS
 - pip install tabulate
+- pip install folium
+- pip install setuptools
+- pip install pandas
 
 CMDS TO RUN
 - source kafka-env/bin/activate

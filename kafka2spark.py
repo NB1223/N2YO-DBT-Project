@@ -7,13 +7,11 @@ from kafka import KafkaProducer
 import json
 import math
 
-# Set up Kafka Producer for response
 response_producer = KafkaProducer(
     bootstrap_servers="localhost:9092",
     value_serializer=lambda v: json.dumps(v).encode('utf-8')
 )
 
-# Create Spark Session
 spark = SparkSession.builder \
     .appName("SatelliteKafkaConsumer") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3") \
@@ -21,7 +19,7 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-# Satellite data schema
+
 satellite_schema = StructType() \
     .add("sat_id", StringType()) \
     .add("satname", StringType()) \
@@ -31,7 +29,7 @@ satellite_schema = StructType() \
     .add("elevation", DoubleType()) \
     .add("timestamp", LongType())
 
-# Observer schema with renamed fields to prevent ambiguity
+# observer schema with renamed fields to prevent ambiguity
 observer_schema = StructType() \
     .add("obs_latitude", DoubleType()) \
     .add("obs_longitude", DoubleType()) \
@@ -39,7 +37,7 @@ observer_schema = StructType() \
     .add("timestamp", LongType()) \
     .add("choice_id", IntegerType())
 
-# Read from Kafka - satellite
+
 df_raw_sat = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "localhost:9092") \
@@ -47,7 +45,6 @@ df_raw_sat = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Read from Kafka - observer
 df_raw_obs = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "localhost:9092") \
@@ -55,18 +52,16 @@ df_raw_obs = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Parse satellite data
+
 df_sat = df_raw_sat.selectExpr("CAST(value AS STRING) as json_string", "topic") \
     .select(from_json(col("json_string"), satellite_schema).alias("data")) \
     .select("data.*")
 
-# Parse observer data and rename lat/lon
 df_obs = df_raw_obs.selectExpr("CAST(value AS STRING) as json_string", "topic") \
     .select(from_json(col("json_string"), observer_schema).alias("data")) \
     .select("data.*")
 
-# Cache recent satellite data
-# We will use a stateful transformation to store the most recent satellite data
+
 satellite_cache = {}
 
 def update_satellite_cache(new_data):
@@ -76,7 +71,7 @@ def update_satellite_cache(new_data):
 def get_cached_satellites():
     return [Row(**satellite_cache[sat_id]) for sat_id in satellite_cache]
 
-# Define action based on choice_id
+
 df_with_choice = df_obs.withColumn(
     "action",
     when(col("choice_id") == 1, lit("motion_vector"))
@@ -87,7 +82,7 @@ df_with_choice = df_obs.withColumn(
 )
 
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371.0  # Earth radius in kilometers
+    R = 6371.0 
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lon2 - lon1)
@@ -95,15 +90,13 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-# Process the satellite data and update cache
-def process_satellite_data(batch_df, batch_id):
-    batch_df.collect()  # Collect the satellite data into a batch (or any storage mechanism you prefer)
 
-    # Update the cache with new satellite data
+def process_satellite_data(batch_df, batch_id):
+    batch_df.collect() 
+
     for row in batch_df.collect():
         update_satellite_cache(row.asDict())
 
-# Handle the observer choice and calculate coverage overlap
 def process_observer_data(df, df_choice):
     if df.filter(col("action") == "motion_vector").isEmpty() != 1:
         pass
@@ -157,22 +150,22 @@ def process_observer_data(df, df_choice):
             print("\n[WARN] Not enough satellites in cache to compute overlap.")
 
     elif df.filter(col("action") == "closest").isEmpty() != 1:
-        # Get the latest observer data
+        
         observer_rows = df.collect()
 
         for observer_row in observer_rows:
             action = observer_row["action"]
 
             if action == "closest":
-                # Get observer's location
+                
                 obs_lat = observer_row["obs_latitude"]
                 obs_lon = observer_row["obs_longitude"]
 
-                # Find closest satellite
+                
                 min_dist = float('inf')
                 closest_sat = None
 
-                # Convert satellite cache to list of rows
+                
                 cached_satellites = [Row(**sat_data) for sat_data in satellite_cache.values()]
 
                 if not cached_satellites:
@@ -203,20 +196,16 @@ def process_observer_data(df, df_choice):
         print("exit to be implemented")
 
 
-
-# Process the streams
 def process_stream():
-    # Use an additional foreachBatch to update the satellite cache in each micro-batch
+    
     df_sat.writeStream \
         .foreachBatch(process_satellite_data) \
         .start()
 
-    # Use another foreachBatch to process the observer's choice and calculate overlap when needed
     query = df_with_choice.writeStream \
         .foreachBatch(lambda df, batch_id: process_observer_data(df, df_with_choice)) \
         .start()
 
     query.awaitTermination()
 
-# Start processing
 process_stream()

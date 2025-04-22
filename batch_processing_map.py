@@ -6,15 +6,13 @@ import mysql.connector
 from dotenv import load_dotenv
 from tabulate import tabulate
 
-# Load environment variables
 load_dotenv()
 
 # Constants
 API_KEY = os.getenv("N2YO_API_KEY")
-SAT_ID = 49810  # You can change this to any NORAD ID
-LAT, LON, ALT = 12.97623, 77.60329, 0  # Observer's location (Bangalore)
+SAT_ID = 49810 
+LAT, LON, ALT = 12.97623, 77.60329, 0 
 
-# MySQL Config
 MYSQL_CONFIG = {
     'host': os.getenv("MYSQL_HOST"),
     'user': os.getenv("MYSQL_USER"),
@@ -23,11 +21,10 @@ MYSQL_CONFIG = {
     'auth_plugin': 'mysql_native_password'
 }
 
-# MySQL insert function
 def insert_into_mysql(payload):
     try:
         conn = mysql.connector.connect(**MYSQL_CONFIG)
-        print("✅ Connected to MySQL")
+        print("Connected to MySQL")
 
         cursor = conn.cursor()
 
@@ -52,10 +49,9 @@ def insert_into_mysql(payload):
         cursor.close()
         conn.close()
     except mysql.connector.Error as err:
-        print(f"❌ MySQL error: {err}")
+        print(f"MySQL error: {err}")
 
 
-# Fetch from N2YO and Store in MySQL
 def fetch_and_store():
     url = f"https://api.n2yo.com/rest/v1/satellite/positions/{SAT_ID}/{LAT}/{LON}/{ALT}/1&apiKey={API_KEY}"
     try:
@@ -90,7 +86,6 @@ def fetch_and_store():
         print(f"Failed to fetch data: {e}")
 
 
-# Fetch data from MySQL
 def fetch_data_from_mysql():
     try:
         conn = mysql.connector.connect(**MYSQL_CONFIG)
@@ -107,9 +102,7 @@ def fetch_data_from_mysql():
         return []
 
 
-# Generate HTML and JS for displaying the satellite path
 def generate_html_with_map(data):
-    # Start HTML page
     html_content = """
     <!DOCTYPE html>
     <html>
@@ -132,7 +125,6 @@ def generate_html_with_map(data):
             var satellitePath = [];
     """
     
-    # Add satellite position data to the JavaScript part
     for record in data:
         latitude = record[1]
         longitude = record[2]
@@ -141,7 +133,6 @@ def generate_html_with_map(data):
             satellitePath.push([ {latitude}, {longitude}, "{timestamp}" ]);
         """
 
-    # Add polyline to show the path
     html_content += """
             // Draw polyline to show the path
             var path = L.polyline(satellitePath, { color: 'blue' }).addTo(map);
@@ -152,13 +143,11 @@ def generate_html_with_map(data):
     </html>
     """
 
-    # Save HTML to file
     with open("satellite_path.html", "w") as file:
         file.write(html_content)
     print("Satellite path HTML generated: satellite_path.html")
 
 
-# Main function to handle periodic fetching and updating of map
 def main():
     print("Starting satellite tracking...\n")
     last_update_time = time.time()  # Time for the last map update
@@ -166,21 +155,18 @@ def main():
     try:
         while True:
             print(f"\nFetching at {time.strftime('%H:%M:%S')}")
-            fetch_and_store()  # This function still stores the data into the DB.
+            fetch_and_store() 
             
             current_time = time.time()
-            # Update the map every 10 minutes (600 seconds)
+            # update the map every 10 minutes (600 seconds)
             if current_time - last_update_time >= 600:
-                # Fetch data from the database and generate updated HTML map
-                data = fetch_data_from_mysql()  # Fetch stored data
-                generate_html_with_map(data)  # Create the HTML page with map
-                last_update_time = current_time  # Update the time of last update
-
-            time.sleep(1)  # Sleep for 1 second before fetching and updating the data
+            
+                data = fetch_data_from_mysql()  
+                generate_html_with_map(data)  
+                last_update_time = current_time  
+            time.sleep(1)  
 
     except KeyboardInterrupt:
         print("\nTracking stopped.")
 
-
-# Run the main loop
 main()

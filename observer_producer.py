@@ -88,13 +88,13 @@ def send_to_kafka_and_wait(c):
     elif c == 3:
         for msg in consumer:
             response = msg.value
-            print("\n📬 Response received as Table:\n")
+            print("\nResponse received as Table:\n")
             print(tabulate(response.items(), headers=["Key", "Value"], tablefmt="grid"))
             break
     else:
         for msg in consumer_mv:
             response = msg.value
-            print("\n📬 Motion Vector Response Received:\n")
+            print("\nResponse Received:\n")
             if isinstance(response, list):
                 print(tabulate(response, headers="keys", tablefmt="grid"))
             else:

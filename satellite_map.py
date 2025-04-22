@@ -6,7 +6,6 @@ from folium.features import PolyLine
 import os
 from datetime import datetime
 
-# Create Spark Session
 spark = SparkSession.builder \
     .appName("SatelliteKafkaConsumerMapWithWindows") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3") \
@@ -14,7 +13,7 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-# Schema for satellite data
+
 schema = StructType() \
     .add("sat_id", StringType()) \
     .add("satname", StringType()) \
@@ -24,7 +23,7 @@ schema = StructType() \
     .add("elevation", DoubleType()) \
     .add("timestamp", LongType())
 
-# Kafka readStream
+
 df_raw = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "localhost:9092") \
@@ -32,7 +31,6 @@ df_raw = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Parse JSON value and add processing timestamp
 df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_string", "topic") \
     .select(
         col("topic"),
@@ -40,7 +38,7 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_string", "topic") \
     ).select("topic", "data.*") \
     .withColumn("processing_time", current_timestamp())
 
-# Apply sliding window: 30-minute window sliding every 2 minutes
+
 windowed_df = df_parsed \
     .withWatermark("processing_time", "10 minutes") \
     .groupBy(
@@ -61,17 +59,14 @@ windowed_df = df_parsed \
         col("max(timestamp)").alias("timestamp")
     )
 
-# Storage for windowed data
 windowed_positions = {sat_id: [] for sat_id in ["49810", "43566", "43056", "41550", "41174"]}
 
-# Function to visualize with sliding windows
 def visualize_windowed_map(batch_df, epoch_id):
     if batch_df.isEmpty():
         return
 
     pandas_df = batch_df.toPandas()
     
-    # Update positions for each satellite
     for _, row in pandas_df.iterrows():
         sat_id = str(row['sat_id'])
         if sat_id in windowed_positions:
@@ -80,14 +75,14 @@ def visualize_windowed_map(batch_df, epoch_id):
                 "window_start": row['window_start'],
                 "window_end": row['window_end']
             })
-            # Keep only positions from the last 30-minute window
+            
             current_time = datetime.now()
             windowed_positions[sat_id] = [
                 pos for pos in windowed_positions[sat_id] 
                 if (current_time - pos['window_end']).total_seconds() <= 1800  # 30 minutes
             ]
 
-    # Create map
+
     fmap = folium.Map(
         location=[0, 0],
         zoom_start=2,
@@ -95,7 +90,7 @@ def visualize_windowed_map(batch_df, epoch_id):
         attr='Esri World Imagery'
     )
 
-    # Color palette
+    
     colors = ['red', 'blue', 'green', 'purple', 'orange']
     color_map = {
         "49810": colors[0],
@@ -105,13 +100,12 @@ def visualize_windowed_map(batch_df, epoch_id):
         "41174": colors[4]
     }
 
-    # Add paths and markers
+
     for sat_id, positions in windowed_positions.items():
         if len(positions) >= 2:
             # Extract just the coordinates for the path
             coords = [pos['position'] for pos in positions]
             
-            # Add path line
             PolyLine(
                 locations=coords,
                 color=color_map.get(sat_id, 'gray'),
@@ -120,7 +114,6 @@ def visualize_windowed_map(batch_df, epoch_id):
                 popup=f"{positions[0]['satname'] if 'satname' in positions[0] else 'Satellite'} Path"
             ).add_to(fmap)
             
-            # Add current position marker
             folium.Marker(
                 location=coords[-1],
                 popup=f"{positions[-1].get('satname', 'Satellite')} (ID: {sat_id})<br>"
@@ -128,14 +121,12 @@ def visualize_windowed_map(batch_df, epoch_id):
                 icon=folium.Icon(color=color_map.get(sat_id, 'gray'), icon='satellite', prefix='fa')
             ).add_to(fmap)
 
-    # Add observer location
     folium.Marker(
         location=[12.97623, 77.60329],
         popup="Observer: Bangalore",
         icon=folium.Icon(color='black', icon='user')
     ).add_to(fmap)
 
-    # Add legend
     legend_html = '''
     <div style="position: fixed; 
                 bottom: 50px; left: 50px; width: 180px; height: 150px; 
@@ -151,7 +142,6 @@ def visualize_windowed_map(batch_df, epoch_id):
     
     fmap.get_root().html.add_child(folium.Element(legend_html))
 
-    # Add title with time range
     if windowed_positions:
         latest_window = max(pos['window_end'] for positions in windowed_positions.values() for pos in positions)
         oldest_window = min(pos['window_start'] for positions in windowed_positions.values() for pos in positions)
@@ -162,14 +152,12 @@ def visualize_windowed_map(batch_df, epoch_id):
         '''
         fmap.get_root().html.add_child(folium.Element(title_html))
 
-    # Save map
     os.makedirs("maps", exist_ok=True)
     map_path = "maps/windowed_satellite_tracking.html"
     fmap.save(map_path)
     
     print(f"🌍 Map updated with 30-minute sliding window data (epoch {epoch_id})")
 
-# Start the streaming query
 query = windowed_df.writeStream \
     .foreachBatch(visualize_windowed_map) \
     .outputMode("complete") \

@@ -2,7 +2,6 @@ from pyspark.sql.functions import col, when, udf, lit
 from pyspark.sql.types import DoubleType
 import math
 
-# Haversine distance function
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0  # Earth radius in km
     lat1_rad, lon1_rad = math.radians(lat1), math.radians(lon1)
@@ -14,7 +13,6 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-# UDF registration
 haversine_udf = udf(haversine, DoubleType())
 
 def calculate_overlap(df_sat_obs):
@@ -71,7 +69,7 @@ def calculate_overlap(df_sat_obs):
         "lon2"
     )
 
-    # # ✅ Print for debugging (only works in batch mode or when called outside streaming)
+    # Print for debugging (only works in batch mode or when called outside streaming)
     # try:
     #     final_result.show(truncate=False)
     # except:

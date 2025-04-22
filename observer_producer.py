@@ -7,7 +7,6 @@ KAFKA_BROKER = 'localhost:9092'
 OBSERVER_TOPIC = 'observer_location'
 RESPONSE_TOPIC = 'observer_response'
 RESPONSE_TOPIC_MV = 'motion_vector_response'
-observer_response
 
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BROKER,

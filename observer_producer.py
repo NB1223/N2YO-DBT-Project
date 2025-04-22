@@ -3,18 +3,15 @@ import json
 from kafka import KafkaProducer, KafkaConsumer
 from tabulate import tabulate
 
-# Kafka config
 KAFKA_BROKER = 'localhost:9092'
 OBSERVER_TOPIC = 'observer_location'
 RESPONSE_TOPIC = 'motion_vector_response'
 
-# Kafka Producer
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BROKER,
     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
 )
 
-# Kafka Consumer
 consumer = KafkaConsumer(
     RESPONSE_TOPIC,
     bootstrap_servers=KAFKA_BROKER,
@@ -24,7 +21,6 @@ consumer = KafkaConsumer(
     enable_auto_commit=False
 )
 
-# Shared observer state
 observer_data = {
     "latitude": None,
     "longitude": None,

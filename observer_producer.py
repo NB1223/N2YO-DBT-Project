@@ -5,7 +5,9 @@ from tabulate import tabulate
 
 KAFKA_BROKER = 'localhost:9092'
 OBSERVER_TOPIC = 'observer_location'
-RESPONSE_TOPIC = 'motion_vector_response'
+RESPONSE_TOPIC = 'observer_response'
+RESPONSE_TOPIC_MV = 'motion_vector_response'
+observer_response
 
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BROKER,
@@ -14,6 +16,15 @@ producer = KafkaProducer(
 
 consumer = KafkaConsumer(
     RESPONSE_TOPIC,
+    bootstrap_servers=KAFKA_BROKER,
+    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+    # group_id="observer_waiter",
+    auto_offset_reset="latest",
+    enable_auto_commit=False
+)
+
+consumer_mv = KafkaConsumer(
+    RESPONSE_TOPIC_MV,
     bootstrap_servers=KAFKA_BROKER,
     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
     # group_id="observer_waiter",
@@ -83,7 +94,7 @@ def send_to_kafka_and_wait(c):
             print(tabulate(response.items(), headers=["Key", "Value"], tablefmt="grid"))
             break
     else:
-        for msg in consumer:
+        for msg in consumer_mv:
             response = msg.value
             print(response)
             print("\nResponse received:")

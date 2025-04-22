@@ -110,9 +110,10 @@ def calculate_motion_vector(prev, curr):
 # Store multiple positions per satellite over time
 position_history = {}
 
-# Modified motion vector function to consider 5-minute window
 def process_satellite_data(batch_df, batch_id):
     rows = batch_df.collect()
+    response_list = []
+
     for row in rows:
         row_dict = row.asDict()
         update_satellite_cache(row_dict)
@@ -152,11 +153,18 @@ def process_satellite_data(batch_df, batch_id):
                 "timestamp": now_ts
             }
             print(f"[MOTION VECTOR - 5 MIN] {response}")
-            response_producer.send("motion_vector_response", value=response)
+            response_list.append(response)
 
-# Stream queries
+    # 🔽 Send up to 5 responses in one Kafka message
+    if response_list:
+        batch_to_send = response_list[:5]  # Send max 5 per batch
+        response_producer.send("motion_vector_response", value=batch_to_send)
+
+
 query_sat = df_sat.writeStream \
     .foreachBatch(process_satellite_data) \
+    .option("checkpointLocation", "/tmp/spark_checkpoint_sat") \
     .start()
+
 
 query_sat.awaitTermination()

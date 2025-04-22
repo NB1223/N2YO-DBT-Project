@@ -80,7 +80,6 @@ def send_to_kafka_and_wait(c):
         for msg in consumer:
             response = msg.value
             print("\nResponse received:")
-
             if isinstance(response, list):
                 print(tabulate(response, headers="keys", tablefmt="grid"))
             else:
@@ -95,11 +94,13 @@ def send_to_kafka_and_wait(c):
     else:
         for msg in consumer_mv:
             response = msg.value
-            print(response)
-            print("\nResponse received:")
-            for key, value in response.items():
-                print(f"{key}: {value}")
+            print("\n📬 Motion Vector Response Received:\n")
+            if isinstance(response, list):
+                print(tabulate(response, headers="keys", tablefmt="grid"))
+            else:
+                print(tabulate([response], headers="keys", tablefmt="grid"))
             break
+
 
 def main_loop():
     while True:

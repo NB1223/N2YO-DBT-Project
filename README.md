@@ -4,6 +4,7 @@
 
 This project streams real-time satellite telemetry data using the N2YO API and performs distributed computations using Apache Kafka and Apache Spark. The main objectives are:
 
+- Compare Stream Vs. Batch processing via satellite position/path visualization.
 - Calculate the satellite closest to a fixed observer location (e.g., Bangalore).
 - Determine coverage overlap between multiple satellites.
 - Compute motion vectors for each satellite based on positional data over time.

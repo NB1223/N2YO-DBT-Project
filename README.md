@@ -14,6 +14,8 @@ This project streams real-time satellite telemetry data using the N2YO API and p
 - Data publishing to Kafka topics
 - Real-time computation using Spark Structured Streaming
 - Derived insights based on spatial and temporal analysis
+- Real-time satellite tracking
+- Satellite Path visualization
 
 ## Technologies Used
 
